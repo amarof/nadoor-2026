@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Voyage à Nador — Nos maisons</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --sea:#0e5f76;
+    --sea-light:#e7f2f5;
+    --sand:#f6efe3;
+    --ink:#22303a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);}
+  body{display:flex;flex-direction:column;background:var(--sand);}
+
+  header{
+    padding:10px 14px 10px;
+    background:var(--sand);
+    border-bottom:1px solid rgba(14,95,118,.15);
+  }
+  header h1{font-size:1.05rem;font-weight:700;color:var(--sea);margin-bottom:8px;}
+
+  .searchbar{display:flex;gap:6px;position:relative;}
+  .searchbar input{
+    flex:1;min-width:0;
+    font-family:inherit;font-size:16px; /* 16px = pas de zoom auto iOS */
+    padding:10px 12px;border-radius:10px;
+    border:1.5px solid rgba(14,95,118,.3);
+    background:#fff;color:var(--ink);
+  }
+  .searchbar input:focus{outline:none;border-color:var(--sea);}
+  .searchbar button{
+    background:var(--sea);color:#fff;border:none;cursor:pointer;
+    font-family:inherit;font-size:.9rem;font-weight:600;
+    padding:0 16px;border-radius:10px;white-space:nowrap;
+  }
+  .searchbar button:active{opacity:.85;}
+
+  .results{
+    position:absolute;top:calc(100% + 4px);left:0;right:0;
+    background:#fff;border-radius:12px;
+    box-shadow:0 6px 20px rgba(0,0,0,.18);
+    z-index:2000;overflow:hidden;display:none;
+  }
+  .results.show{display:block;}
+  .result{
+    display:block;width:100%;text-align:left;
+    background:none;border:none;cursor:pointer;
+    font-family:inherit;font-size:.85rem;color:var(--ink);
+    padding:11px 13px;border-bottom:1px solid rgba(14,95,118,.08);
+  }
+  .result:last-child{border-bottom:none;}
+  .result:active{background:var(--sea-light);}
+  .result small{display:block;color:#6b7a85;font-size:.72rem;margin-top:1px;}
+  .results .empty{padding:12px 13px;font-size:.82rem;color:#6b7a85;}
+
+  .mapwrap{flex:1;min-height:0;position:relative;}
+  #map{position:absolute;inset:0;}
+
+  .hint{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    z-index:1000;background:rgba(34,48,58,.9);color:#fff;
+    font-size:.78rem;padding:8px 14px;border-radius:10px;
+    max-width:88%;text-align:center;display:none;
+  }
+  .hint.show{display:block;}
+
+  .panel{
+    background:#fff;
+    border-top:1px solid rgba(14,95,118,.15);
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    max-height:45vh;overflow-y:auto;
+  }
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .fam{
+    display:flex;align-items:center;gap:9px;
+    padding:9px 10px;border-radius:12px;
+    background:var(--sea-light);
+    border:none;cursor:pointer;text-align:left;
+    font-family:inherit;font-size:.85rem;color:var(--ink);
+    transition:transform .12s ease;
+  }
+  .fam:active{transform:scale(.97);}
+  .fam:focus-visible{outline:2px solid var(--sea);outline-offset:2px;}
+  .dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px #fff;}
+  .fam b{display:block;font-size:.85rem;}
+  .fam span{display:block;font-size:.68rem;color:#6b7a85;}
+
+  .routes-title{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:4px;
+  }
+  .routes-title h2{font-size:.9rem;color:var(--sea);}
+  .rdv-name{font-size:.75rem;color:#6b7a85;margin-bottom:8px;}
+  .clear-btn{
+    background:none;border:1px solid rgba(14,95,118,.3);color:var(--sea);
+    font-family:inherit;font-size:.75rem;font-weight:600;
+    padding:5px 10px;border-radius:8px;cursor:pointer;
+  }
+  .route-row{
+    display:flex;align-items:center;gap:8px;
+    padding:9px 4px;border-bottom:1px solid rgba(14,95,118,.08);
+    font-size:.85rem;
+  }
+  .route-row:last-child{border-bottom:none;}
+  .route-row .who{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .route-row .dist{color:#6b7a85;font-size:.78rem;white-space:nowrap;}
+  .route-row .time{font-weight:700;color:var(--sea);white-space:nowrap;}
+  .route-row .chev{color:#6b7a85;font-size:.8rem;}
+  .steps{
+    background:var(--sea-light);border-radius:10px;
+    padding:8px 12px;margin:2px 0 8px;
+  }
+  .step{
+    font-size:.8rem;padding:6px 0;
+    border-bottom:1px solid rgba(14,95,118,.1);
+    display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+  }
+  .step:last-child{border-bottom:none;}
+  .stepdist{color:#6b7a85;font-size:.72rem;white-space:nowrap;}
+  .loading{font-size:.8rem;color:#6b7a85;padding:6px 0;}
+  .note{font-size:.72rem;color:#6b7a85;margin-top:8px;}
+
+  .pin{
+    width:34px;height:34px;border-radius:50% 50% 50% 4px;
+    transform:rotate(-45deg);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 6px rgba(0,0,0,.35);
+    border:2.5px solid #fff;
+  }
+  .pin span{transform:rotate(45deg);color:#fff;font-weight:700;font-size:.8rem;font-family:inherit;}
+  .flag{font-size:2rem;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));}
+  .leaflet-popup-content{font-family:inherit;font-size:.85rem;}
+  .leaflet-popup-content b{color:var(--sea);}
+  .leaflet-popup-content a{color:var(--sea);font-weight:600;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌊 Voyage à Nador — Nos maisons</h1>
+  <div class="searchbar">
+    <input type="text" id="searchInput" placeholder="Rechercher un lieu de RDV (plage, café, adresse…)" autocomplete="off">
+    <button id="searchBtn">🔍</button>
+    <div class="results" id="results"></div>
+  </div>
+</header>
+
+<div class="mapwrap">
+  <div id="map"></div>
+  <div class="hint" id="hint"></div>
+</div>
+
+<div class="panel">
+  <div id="routesBox" style="display:none">
+    <div class="routes-title">
+      <h2>🚗 Trajets vers le point de RDV</h2>
+      <button class="clear-btn" id="clearBtn">✕ Effacer</button>
+    </div>
+    <div class="rdv-name" id="rdvName"></div>
+    <div id="routesList"></div>
+    <div class="note">👆 Touchez une famille pour voir son trajet et les instructions détaillées</div>
+  </div>
+  <div class="grid" id="famGrid"></div>
+</div>
+
+<script>
+const familles = [
+  {nom:"Khadija, Lahsen et Houssaine", court:"Khadija, Lahsen, Houssaine", initiale:"×3", lat:35.300082, lng:-2.971063, couleur:"#4a5bb5", zone:"Beni Ensar (nord) · 3 familles"},
+  {nom:"Karim",  court:"Karim", initiale:"K", lat:35.2042646, lng:-2.9428092, couleur:"#0e766e", zone:"Nador centre"},
+  {nom:"Mehdi",  court:"Mehdi", initiale:"M", lat:35.2036111, lng:-2.9202222, couleur:"#b07b1e", zone:"Nador est"},
+  {nom:"Jalal",  court:"Jalal", initiale:"J", lat:35.1285570, lng:-2.9012180, couleur:"#c2452d", zone:"Selouane (sud)"}
+];
+
+const map = L.map('map', {zoomControl:true});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+
+const markers = {};
+const bounds = [];
+
+familles.forEach(f => {
+  const icon = L.divIcon({
+    className:'',
+    html:`<div class="pin" style="background:${f.couleur}"><span>${f.initiale}</span></div>`,
+    iconSize:[34,34], iconAnchor:[17,32], popupAnchor:[0,-30]
+  });
+  const m = L.marker([f.lat, f.lng], {icon}).addTo(map)
+    .bindPopup(`<b>Maison ${f.nom}</b><br>${f.zone}`);
+  markers[f.nom] = m;
+  bounds.push([f.lat, f.lng]);
+});
+map.fitBounds(bounds, {padding:[40,40]});
+
+const grid = document.getElementById('famGrid');
+familles.forEach(f => {
+  const btn = document.createElement('button');
+  btn.className = 'fam';
+  btn.innerHTML = `<span class="dot" style="background:${f.couleur}"></span><span><b>${f.court}</b><span>${f.zone}</span></span>`;
+  btn.addEventListener('click', () => {
+    map.flyTo([f.lat, f.lng], 15, {duration:.8});
+    markers[f.nom].openPopup();
+  });
+  grid.appendChild(btn);
+});
+
+/* ---------- Recherche d'adresse ---------- */
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const resultsBox = document.getElementById('results');
+const hint = document.getElementById('hint');
+
+function showHint(msg, ms){
+  hint.textContent = msg;
+  hint.classList.add('show');
+  if (ms) setTimeout(() => hint.classList.remove('show'), ms);
+}
+
+/* Recherche de secours via l'API Claude (fonctionne dans l'aperçu partagé) */
+async function claudeGeocode(q){
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      messages: [{
+        role: "user",
+        content: `Find up to 5 real places matching "${q}" in or near Nador, Morocco (region between latitude 35.0-35.45, longitude -3.2 to -2.7). Use web search if needed to get accurate GPS coordinates. Respond ONLY with a JSON array, no markdown, no explanation: [{"name":"...","area":"neighborhood or town","lat":00.000000,"lng":-0.000000}]. If nothing matches, respond [].`
+      }],
+      tools: [{"type": "web_search_20250305", "name": "web_search"}]
+    })
+  });
+  const data = await res.json();
+  const text = (data.content || [])
+    .filter(b => b.type === "text")
+    .map(b => b.text).join("\n");
+  const clean = text.replace(/```json|```/g, "").trim();
+  const start = clean.indexOf('[');
+  const end = clean.lastIndexOf(']');
+  if (start === -1 || end === -1) return [];
+  return JSON.parse(clean.slice(start, end + 1));
+}
+
+async function doSearch(){
+  const q = searchInput.value.trim();
+  if (!q) return;
+  resultsBox.innerHTML = '<div class="empty">⏳ Recherche…</div>';
+  resultsBox.classList.add('show');
+
+  let items = null;
+
+  // 1) Service de cartographie classique (navigateur)
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=fr&countrycodes=ma&viewbox=-3.20,35.45,-2.70,35.00&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    items = data.map(r => {
+      const parts = r.display_name.split(',');
+      return {name: parts[0].trim(), area: parts.slice(1,4).join(',').trim(), lat: parseFloat(r.lat), lng: parseFloat(r.lon)};
+    });
+  } catch(e) { items = null; }
+
+  // 2) Secours : recherche via Claude (aperçu partagé)
+  if (items === null) {
+    resultsBox.innerHTML = '<div class="empty">⏳ Recherche via Claude… (quelques secondes)</div>';
+    try {
+      items = await claudeGeocode(q);
+    } catch(e) { items = null; }
+  }
+
+  if (items === null) {
+    resultsBox.innerHTML = '<div class="empty">⚠️ Recherche impossible — vérifiez votre connexion et réessayez</div>';
+    return;
+  }
+  if (!items.length) {
+    resultsBox.innerHTML = '<div class="empty">Aucun résultat — essayez « nom + Nador »</div>';
+    return;
+  }
+
+  resultsBox.innerHTML = '';
+  items.forEach(r => {
+    const b = document.createElement('button');
+    b.className = 'result';
+    b.innerHTML = `${r.name}<small>${r.area || ''}</small>`;
+    b.addEventListener('click', () => {
+      resultsBox.classList.remove('show');
+      searchInput.value = r.name;
+      searchInput.blur();
+      setRdvPoint(L.latLng(r.lat, r.lng), r.name);
+    });
+    resultsBox.appendChild(b);
+  });
+}
+searchBtn.addEventListener('click', doSearch);
+searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+document.addEventListener('click', e => {
+  if (!resultsBox.contains(e.target) && e.target !== searchInput && e.target !== searchBtn) {
+    resultsBox.classList.remove('show');
+  }
+});
+
+/* ---------- Point de RDV + itinéraires ---------- */
+const routesBox = document.getElementById('routesBox');
+const routesList = document.getElementById('routesList');
+const rdvName = document.getElementById('rdvName');
+const clearBtn = document.getElementById('clearBtn');
+
+let rdvMarker = null;
+let routeLayers = [];
+
+function clearRoutes(){
+  routeLayers.forEach(l => map.removeLayer(l));
+  routeLayers = [];
+  routesList.innerHTML = '';
+}
+function clearAll(){
+  clearRoutes();
+  if (rdvMarker){ map.removeLayer(rdvMarker); rdvMarker = null; }
+  routesBox.style.display = 'none';
+  searchInput.value = '';
+  map.fitBounds(bounds, {padding:[40,40]});
+}
+clearBtn.addEventListener('click', clearAll);
+
+function setRdvPoint(latlng, label){
+  if (rdvMarker) map.removeLayer(rdvMarker);
+  const icon = L.divIcon({
+    className:'', html:'<div class="flag">🚩</div>',
+    iconSize:[32,32], iconAnchor:[6,30]
+  });
+  rdvMarker = L.marker(latlng, {icon}).addTo(map)
+    .bindPopup(`<b>📍 ${label || 'Point de rendez-vous'}</b>`);
+  rdvName.textContent = '📍 ' + (label || 'Point choisi');
+  computeRoutes(latlng, label);
+}
+
+function fmtDist(m){ return m >= 1000 ? (m/1000).toFixed(1).replace('.', ',') + ' km' : Math.round(m) + ' m'; }
+function fmtTime(s){
+  const min = Math.round(s/60);
+  if (min < 60) return min + ' min';
+  return Math.floor(min/60) + ' h ' + String(min%60).padStart(2,'0');
+}
+/* ---- Instructions de conduite en français ---- */
+function stepText(step){
+  const t = step.maneuver.type;
+  const mod = step.maneuver.modifier || '';
+  const name = step.name ? ` sur ${step.name}` : '';
+  const dirs = {
+    'left':'à gauche','right':'à droite',
+    'slight left':'légèrement à gauche','slight right':'légèrement à droite',
+    'sharp left':'complètement à gauche','sharp right':'complètement à droite',
+    'straight':'tout droit','uturn':'demi-tour'
+  };
+  const d = dirs[mod] || '';
+  if (t === 'depart') return `🏠 Départ${name}`;
+  if (t === 'arrive') return `🚩 Arrivée au point de rendez-vous`;
+  if (t === 'roundabout' || t === 'rotary') {
+    const exit = step.maneuver.exit ? `, ${step.maneuver.exit}ᵉ sortie` : '';
+    return `Au rond-point${exit}${name}`;
+  }
+  if (t === 'turn' || t === 'end of road') return `Tournez ${d}${name}`;
+  if (t === 'fork') return `Restez ${d}${name}`;
+  if (t === 'merge') return `Rejoignez la route${name}`;
+  if (t === 'on ramp') return `Prenez la bretelle ${d}`;
+  if (t === 'off ramp') return `Prenez la sortie ${d}`;
+  if (t === 'continue' || t === 'new name') return `Continuez ${d || 'tout droit'}${name}`;
+  return `Continuez${name}`;
+}
+
+let routesData = [];
+let focusedIdx = null;
+
+function focusRoute(idx){
+  if (focusedIdx === idx) { unfocusRoutes(); return; }
+  focusedIdx = idx;
+  routesData.forEach((r, i) => {
+    if (!r.layer) return;
+    r.layer.setStyle({opacity: i === idx ? .95 : .12, weight: i === idx ? 6 : 4});
+    r.stepsDiv.style.display = i === idx ? 'block' : 'none';
+    r.row.style.background = i === idx ? 'var(--sea-light)' : 'none';
+  });
+  const r = routesData[idx];
+  if (r.layer) map.fitBounds(r.layer.getBounds(), {padding:[45,45]});
+}
+
+function unfocusRoutes(){
+  focusedIdx = null;
+  const allBounds = [];
+  routesData.forEach(r => {
+    if (r.layer) {
+      r.layer.setStyle({opacity:.75, weight:5});
+      allBounds.push([r.f.lat, r.f.lng]);
+    }
+    r.stepsDiv.style.display = 'none';
+    r.row.style.background = 'none';
+  });
+  if (rdvMarker) allBounds.push(rdvMarker.getLatLng());
+  if (allBounds.length) map.fitBounds(allBounds, {padding:[50,50]});
+}
+
+function haversine(a, b){
+  const R = 6371000, rad = x => x*Math.PI/180;
+  const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+
+async function computeRoutes(dest, label){
+  clearRoutes();
+  routesData = [];
+  focusedIdx = null;
+  routesBox.style.display = 'block';
+  routesList.innerHTML = '<div class="loading">⏳ Calcul des trajets…</div>';
+
+  const results = await Promise.all(familles.map(async f => {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${f.lng},${f.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson&steps=true`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.routes && data.routes[0]) return {f, route: data.routes[0]};
+    } catch(e) {}
+    return {f, route: null};
+  }));
+
+  routesList.innerHTML = '';
+  const allBounds = [ [dest.lat, dest.lng] ];
+
+  results.sort((a,b) => {
+    const ta = a.route ? a.route.duration : Infinity;
+    const tb = b.route ? b.route.duration : Infinity;
+    return ta - tb;
+  });
+
+  const anyFail = results.some(r => !r.route);
+
+  results.forEach(({f, route}, idx) => {
+    const row = document.createElement('div');
+    row.className = 'route-row';
+    row.style.cursor = 'pointer';
+    const stepsDiv = document.createElement('div');
+    stepsDiv.className = 'steps';
+    stepsDiv.style.display = 'none';
+    allBounds.push([f.lat, f.lng]);
+    let layer = null;
+
+    if (route) {
+      layer = L.geoJSON(route.geometry, {
+        style:{color:f.couleur, weight:5, opacity:.75}
+      }).addTo(map);
+      routeLayers.push(layer);
+      row.innerHTML = `<span class="dot" style="background:${f.couleur}"></span>
+        <span class="who">${f.court}</span>
+        <span class="dist">${fmtDist(route.distance)}</span>
+        <span class="time">${fmtTime(route.duration)}</span>
+        <span class="chev">▾</span>`;
+      // Instructions détaillées
+      const steps = (route.legs && route.legs[0]) ? route.legs[0].steps : [];
+      stepsDiv.innerHTML = steps.map(s => {
+        const dist = s.distance > 30 ? `<span class="stepdist">${fmtDist(s.distance)}</span>` : '';
+        return `<div class="step">${stepText(s)} ${dist}</div>`;
+      }).join('');
+      row.addEventListener('click', () => focusRoute(idx));
+    } else {
+      // Estimation : distance à vol d'oiseau × 1.35, vitesse moyenne 35 km/h
+      const distEst = haversine({lat:f.lat,lng:f.lng}, dest) * 1.35;
+      const timeEst = distEst / (35000/3600);
+      layer = L.polyline([[f.lat,f.lng],[dest.lat,dest.lng]],
+        {color:f.couleur, weight:4, dashArray:'6 8', opacity:.6});
+      layer.addTo(map);
+      layer.getBounds = () => L.latLngBounds([[f.lat,f.lng],[dest.lat,dest.lng]]);
+      routeLayers.push(layer);
+      row.innerHTML = `<span class="dot" style="background:${f.couleur}"></span>
+        <span class="who">${f.court}</span>
+        <span class="dist">≈ ${fmtDist(distEst)}</span>
+        <span class="time">≈ ${fmtTime(timeEst)}</span>
+        <span class="chev">▾</span>`;
+      stepsDiv.innerHTML = '<div class="step">Trajet estimé (l\'aperçu Claude bloque le calcul exact). Pour le trajet précis avec instructions, ouvrez le fichier dans Safari ou Chrome.</div>';
+      row.addEventListener('click', () => focusRoute(idx));
+    }
+    routesList.appendChild(row);
+    routesList.appendChild(stepsDiv);
+    routesData.push({f, route, layer, row, stepsDiv});
+  });
+
+  if (anyFail) {
+    const warn = document.createElement('div');
+    warn.className = 'note';
+    warn.textContent = 'ℹ️ Trajets « ≈ » = estimations. Pour les trajets routiers exacts avec instructions GPS, ouvrez le fichier dans Safari ou Chrome.';
+    routesList.appendChild(warn);
+  }
+
+  map.fitBounds(allBounds, {padding:[50,50]});
+}
+</script>
+</body>
+</html>
